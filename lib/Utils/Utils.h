@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
+using ESP8266WiFiClass = WiFiClass;
 #include <MD5Builder.h>
 #include <Timezone.h>
 #include <NTPClient.h>

@@ -9,8 +9,13 @@ def sign_firmware(source, target, env):
     signed_firmware_path = firmware_path.replace(".bin", ".signed.bin")
 
     upload_port = env.GetProjectOption("upload_port")
-    upload_flags = env.GetProjectOption("upload_flags")
-    password = [flag.split("=")[1] for flag in upload_flags if "--auth" in flag][0]
+    upload_flags = env.GetProjectOption("upload_flags") or []
+    auth_flag = next((flag for flag in upload_flags if "--auth" in flag), None)
+
+    if auth_flag:
+        password = auth_flag.split("=", 1)[1] if "=" in auth_flag else None
+    else:
+        password = None
 
     # Path to the private key
     private_key_path = os.path.join(project_dir, "signing", "private.key")

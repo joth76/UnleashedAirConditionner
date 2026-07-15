@@ -203,11 +203,15 @@ String UacDevice::FrameToHexString(uint8_t FrameType) {
   return frameString;
 }
 
+void UacDevice::sendConfigurationFrame() {
+  serial->write(FrameA1, FrameLengths::A1_FRAME_LENGTH);
+  serial->flush();
+  sendConfigurationToAC = 0;
+}
+
 void UacDevice::process(void) {
   if(sendConfigurationToAC) {
-    serial->write(FrameA1, FrameLengths::A1_FRAME_LENGTH);
-    serial->flush();
-    sendConfigurationToAC = 0;
+    sendConfigurationFrame();
   }
 
   if(serial->available() > 0 ) {

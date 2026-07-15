@@ -12,3 +12,5 @@ void handleDebugInformation(AsyncWebServerRequest *request);
 void handleDoUpdate(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleWifi(AsyncWebServerRequest *request);
 void handleReboot(AsyncWebServerRequest *request);
+void handleAcStatus(AsyncWebServerRequest *request);
+void handleAcControl(AsyncWebServerRequest *request);

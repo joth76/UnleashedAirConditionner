@@ -9,16 +9,16 @@
 #include <stdlib.h>
 #include <EEPROM.h>
 #include <ArduinoOTA.h>
-#include <ESP8266mDNS.h>
-#include <ESP8266WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFi.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <Timezone.h>
 #include <TimeLib.h>
 #include <ESPAsyncWebServer.h>
 #include <PubSubClient.h>
-#include <SoftwareSerial.h>
-#include <Updater.h>
+#include <HardwareSerial.h>
+#include <Update.h>
 
 #include "IntervalTimer.h"
 #include "SystemConfiguration.h"
@@ -29,10 +29,10 @@
 #include "htmlCode.h"
 
 const char TOPIC_BASE[] PROGMEM = "UnleashedAirConditioner/"; // MQTT base
-#define U_PART U_FS
 #define FIRMWARE_VERSION "0.0.1"
 
-//Public signing key for OTA bin signature (BearSSL), put your own key here this one is as an exemple.
+#if defined(ESP8266)
+// Public signing key for OTA bin signature (BearSSL), put your own key here this one is as an example.
 BearSSL::PublicKey signPubKey{R"(-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAos4s+8A5zGdaiIQJXd3f
 2xvQG/ESsNwRMvW8H75/WrACaVocGyemsr5PHRb5UvvsZEov1mHrw3o9b4tahZZR
@@ -44,9 +44,11 @@ ZQIDAQAB
 -----END PUBLIC KEY-----)"};
 BearSSL::HashSHA256 hash;
 BearSSL::SigningVerifier sign{&signPubKey};
+#endif
 
 // Objects and variables
-SoftwareSerial SerialS1;
+// Air conditioner serial link on ESP32 UART2: RX2 = GPIO16, TX2 = GPIO17
+HardwareSerial SerialS1(2);
 WiFiClient wifiClient;
 int status = WL_IDLE_STATUS;
 WiFiUDP ntpUDP;
@@ -78,7 +80,7 @@ void connectWifi() {
       Serial.printf(": Recovery Mode !\r\n");
     } else {
       WiFi.begin(config.wifi_ssid, config.wifi_password);
-      WiFi.hostname(config.hostname);
+      WiFi.setHostname(config.hostname);
       int count = 0;
       while (WiFi.status() != WL_CONNECTED && count < 10) {
         Serial.printf(".");
@@ -105,6 +107,10 @@ void connectWifi() {
 }
 
 void connectMqtt() {
+  if (strlen(config.mqtt_host) == 0) {
+    return;
+  }
+
   if (!mqttClient.connected()) {
     Serial.printf("Connecting to MQTT...\r\n");
     if (mqttClient.connect("ESP8266Client", config.mqtt_login, config.mqtt_password )) {
@@ -187,9 +193,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 void setup() {
+#if defined(ESP8266)
   Update.installSignature(&hash, &sign);
+#endif
 
-  Serial.begin(9600, SERIAL_8N1);
+  Serial.begin(115200, SERIAL_8N1);
   delay(500);
 
   config.load();
@@ -199,14 +207,16 @@ void setup() {
   startServers();
   startOTA();
 
-  mqttClient.setServer(config.mqtt_host, config.mqtt_port);
-  mqttClient.setCallback(mqttCallback);
-  connectMqtt();
+  if (strlen(config.mqtt_host) > 0) {
+    mqttClient.setServer(config.mqtt_host, config.mqtt_port);
+    mqttClient.setCallback(mqttCallback);
+    connectMqtt();
+  }
 
   MyUacDevice.begin();
   MyUacDevice.subscribeToTopics();
 
-  SerialS1.begin(9600, SWSERIAL_8N1, 4 ,5);
+  SerialS1.begin(9600, SERIAL_8N1, 16, 17);
 
   MyInternalTimers.begin();
   MyInternalTimers.subscribeToTopics();
@@ -252,5 +262,15 @@ void loop() {
   heartBeatTX.run();
   timer_check_system.run();
   MyUacDevice.process();
+
+  static unsigned long lastUartDiag = 0;
+  if (millis() - lastUartDiag > 1000) {
+    lastUartDiag = millis();
+    if (SerialS1.available()) {
+      uint8_t b = SerialS1.read();
+      Serial.printf("UART2 RX: 0x%02X\n", b);
+    }
+  }
+
   yield();
 }

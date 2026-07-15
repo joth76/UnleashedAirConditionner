@@ -3,7 +3,8 @@
 #include <EEPROM.h>
 #include <PubSubClient.h>
 #include <NTPClient.h>
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
+using ESP8266WiFiClass = WiFiClass;
 
 class InternalTimers {
   public:

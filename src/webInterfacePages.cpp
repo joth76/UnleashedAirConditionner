@@ -3,7 +3,7 @@
 #include "SystemConfiguration.h"
 #include "Utils.h"
 #include "UacDevice.h"
-#include <Updater.h>
+#include <Update.h>
 #include <ESPAsyncWebServer.h>
 
 extern AsyncWebServer server;
@@ -301,6 +301,7 @@ void handlePushConfigurationToAC(AsyncWebServerRequest *request) {
   }
 
   MyUacDevice.sendConfigurationToAC = 1;
+  MyUacDevice.sendConfigurationFrame();
   request->send_P(200, "text/html", HTML_PUSH_CONFIGURATION_TO_AC, variablesSubstitution);
 }
 
@@ -316,9 +317,10 @@ void handleDoUpdate(AsyncWebServerRequest *request, const String& filename, size
     extern size_t content_len;
     if (!index) {
         content_len = request->contentLength();
-        int cmd = (filename.indexOf("spiffs") > -1) ? U_FS : U_FLASH;
+#if defined(ESP8266)
         Update.runAsync(true);
-        if (!Update.begin(content_len, cmd)) {
+#endif
+        if (!Update.begin(content_len)) {
             request->send(200, "text/html", HTML_FIRMWARE_UPGRADE_ERROR);
         }
     }
@@ -406,6 +408,49 @@ void handleReboot(AsyncWebServerRequest *request) {
   ESP.restart();
 }
 
+void handleAcStatus(AsyncWebServerRequest *request) {
+  if (!request->authenticate(config.http_login, config.http_password ))
+    return request->requestAuthentication();
+
+  String payload = "{\"power\":" + String(MyUacDevice.powerMode ? 1 : 0) +
+                   ",\"mode\":" + String(MyUacDevice.currentRequestedOperationMode) +
+                   ",\"setpoint\":" + String(MyUacDevice.temperatureSetPoint) +
+                   ",\"returnAirTemperature\":" + String(MyUacDevice.returnAirTemperature) +
+                   "}";
+  request->send(200, "application/json", payload);
+}
+
+void handleAcControl(AsyncWebServerRequest *request) {
+  if (!request->authenticate(config.http_login, config.http_password ))
+    return request->requestAuthentication();
+
+  int power = -1;
+  int mode = -1;
+  int setpoint = -1;
+
+  uint8_t macBlocks[6] = { 0, 0, 0, 0, 0, 0};
+  getMacAddressBlocks(WiFi, macBlocks);
+  MyUacDevice.preFillConfiguration(macBlocks);
+
+  if (request->hasParam("power")) {
+    power = request->getParam("power")->value().toInt();
+    MyUacDevice.updateConfiguration("powerMode", power);
+  }
+  if (request->hasParam("mode")) {
+    mode = request->getParam("mode")->value().toInt();
+    MyUacDevice.updateConfiguration("operationMode", mode);
+  }
+  if (request->hasParam("setpoint")) {
+    setpoint = request->getParam("setpoint")->value().toInt();
+    MyUacDevice.updateConfiguration("temperatureSetPoint", setpoint);
+  }
+
+  MyUacDevice.sendConfigurationToAC = 1;
+  MyUacDevice.sendConfigurationFrame();
+  Serial.printf("AC API control: power=%d mode=%d setpoint=%d\r\n", power, mode, setpoint);
+  request->send(200, "application/json", "{\"ok\":true}");
+}
+
 void startServers() {
    extern AsyncWebServer server;
    server.begin();
@@ -417,6 +462,8 @@ void startServers() {
    server.on("/debug-information", HTTP_GET, handleDebugInformation);
    server.on("/wifi", HTTP_GET, handleWifi);
    server.on("/reboot", HTTP_GET, handleReboot);
+   server.on("/api/ac/status", HTTP_GET, handleAcStatus);
+   server.on("/api/ac/control", HTTP_GET, handleAcControl);
    server.on("/styles.css", HTTP_GET, handleCSS);
    server.on("/doUpdate", HTTP_POST,
      [](AsyncWebServerRequest *request) {request->send(200, "text/html", HTML_FIRMWARE_UPGRADE_ERROR);},

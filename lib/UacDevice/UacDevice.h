@@ -2,7 +2,8 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <PubSubClient.h>
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
+using ESP8266WiFiClass = WiFiClass;
 #include "Utils.h"
 
 class UacDevice {
@@ -51,6 +52,7 @@ class UacDevice {
     uint8_t decodeConfiguration();
     String  FrameToHexString(uint8_t FrameType);
     void    process(void);
+    void    sendConfigurationFrame();
     void    sendHeartbeatFrame();
     void    heartBeatControl();
 
